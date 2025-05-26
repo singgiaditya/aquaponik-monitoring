@@ -5,6 +5,7 @@ import { io } from 'socket.io-client';
 
 const API_URL = 'https://aquaponik-backend-production.up.railway.app/data';
 const SOCKET_URL = 'https://aquaponik-backend-production.up.railway.app';
+const TABLE_API_URL = 'https://aquaponik-backend-production.up.railway.app/data/all';
 
 const Dashboard = () => {
   const [data, setData] = useState([]);
@@ -19,6 +20,15 @@ const Dashboard = () => {
     waterDistance: 0,
     lightIntensity: 0
   });
+  const [tableData, setTableData] = useState({
+    data: [],
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+    sort: 'asc'
+  });
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -68,6 +78,22 @@ const Dashboard = () => {
     return () => {
       socket.disconnect();
     };
+  }, []);
+
+  const fetchTableData = async (page = 1, limit = 10, sort = 'asc') => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${TABLE_API_URL}?page=${page}&limit=${limit}&sort=${sort}`);
+      const json = await response.json();
+      setTableData(json);
+    } catch (err) {
+      console.error('Gagal mengambil data tabel:', err);
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    fetchTableData();
   }, []);
 
   const updateCurrentStats = (current) => {
@@ -130,6 +156,14 @@ const Dashboard = () => {
       default:
         return 'text-green-500';
     }
+  };
+
+  const handlePageChange = (newPage) => {
+    fetchTableData(newPage, tableData.limit, tableData.sort);
+  };
+
+  const handleSortChange = (newSort) => {
+    fetchTableData(1, tableData.limit, newSort);
   };
 
   return (
@@ -278,6 +312,151 @@ const Dashboard = () => {
                   <Line type="monotone" dataKey="light_intensity" stroke="#ffc107" name="Intensitas Cahaya" />
                 </LineChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        {/* Data Table Section */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mt-6">          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-800">Riwayat Data</h2>
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-600">
+                Halaman {tableData.page} dari {tableData.totalPages}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSortChange(tableData.sort === 'asc' ? 'desc' : 'asc')}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-2"
+                >
+                  <span>Sort</span>
+                  <svg className={`w-4 h-4 transition-transform ${tableData.sort === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Suhu Udara</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelembapan</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Suhu Air</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">pH</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TDS</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jarak Air</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cahaya</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan="8" className="px-6 py-4 text-center">Loading...</td>
+                  </tr>
+                ) : (
+                  tableData.data.map((item) => (
+                    <tr key={item.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(item.created_at).toLocaleString()}
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${getStatusColor(item.temperature, 'temperature')}`}>
+                        {item.temperature}°C
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${getStatusColor(item.humidity, 'humidity')}`}>
+                        {item.humidity}%
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${getStatusColor(item.water_temperature, 'temperature')}`}>
+                        {item.water_temperature}°C
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${getStatusColor(item.ph, 'ph')}`}>
+                        {item.ph}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.tds} PPM
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${item.water_distance > 15 ? 'text-red-500' : 'text-green-500'}`}>
+                        {item.water_distance} cm
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {item.light_intensity} lux
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>          {/* Pagination */}
+          <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center text-sm text-gray-500">
+              Menampilkan {tableData.data.length} dari {tableData.total} data
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Ke halaman:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={tableData.totalPages}
+                  value={tableData.page}
+                  onChange={(e) => {
+                    const page = parseInt(e.target.value);
+                    if (page >= 1 && page <= tableData.totalPages) {
+                      handlePageChange(page);
+                    }
+                  }}
+                  className="w-16 px-2 py-1 text-sm border rounded-md"
+                />
+                <span className="text-sm text-gray-600">dari {tableData.totalPages}</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handlePageChange(1)}
+                  disabled={tableData.page === 1}
+                  className={`px-3 py-2 rounded-lg text-sm ${
+                    tableData.page === 1
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  «
+                </button>
+                <button
+                  onClick={() => handlePageChange(tableData.page - 1)}
+                  disabled={tableData.page === 1}
+                  className={`px-4 py-2 rounded-lg text-sm ${
+                    tableData.page === 1
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => handlePageChange(tableData.page + 1)}
+                  disabled={tableData.page === tableData.totalPages}
+                  className={`px-4 py-2 rounded-lg text-sm ${
+                    tableData.page === tableData.totalPages
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  Next
+                </button>
+                <button
+                  onClick={() => handlePageChange(tableData.totalPages)}
+                  disabled={tableData.page === tableData.totalPages}
+                  className={`px-3 py-2 rounded-lg text-sm ${
+                    tableData.page === tableData.totalPages
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  »
+                </button>
+              </div>
             </div>
           </div>
         </div>
