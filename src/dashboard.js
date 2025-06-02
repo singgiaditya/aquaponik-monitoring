@@ -6,11 +6,21 @@ import { io } from 'socket.io-client';
 const API_URL = 'https://aquaponik-backend-production.up.railway.app/data';
 const SOCKET_URL = 'https://aquaponik-backend-production.up.railway.app';
 const TABLE_API_URL = 'https://aquaponik-backend-production.up.railway.app/data/all';
+const ACTIONS_API_URL = 'https://aquaponik-backend-production.up.railway.app/actions';
 
 const Dashboard = () => {
   const [data, setData] = useState([]);
   const [notification, setNotification] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [actionsData, setActionsData] = useState({
+    data: [],
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+    sort: 'desc'
+  });
+  const [lastFeedingTime, setLastFeedingTime] = useState(null);
   const [currentStats, setCurrentStats] = useState({
     temperature: 0,
     humidity: 0,
@@ -96,6 +106,28 @@ const Dashboard = () => {
     fetchTableData();
   }, []);
 
+  const fetchActionsData = async (page = 1, limit = 20, sort = 'desc') => {
+    try {
+      const response = await fetch(`${ACTIONS_API_URL}?page=${page}&limit=${limit}&sort=${sort}`);
+      const json = await response.json();
+      setActionsData(json);
+      
+      // Update last feeding time
+      const lastFeeding = json.data.find(item => item.type === 'servo' && item.action === 'push_food');
+      if (lastFeeding) {
+        setLastFeedingTime(new Date(lastFeeding.created_at));
+      }
+    } catch (err) {
+      console.error('Gagal mengambil data aksi:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchActionsData();
+    const interval = setInterval(fetchActionsData, 300000); // Refresh every 5 minutes
+    return () => clearInterval(interval);
+  }, []);
+
   const updateCurrentStats = (current) => {
     if (!current) return;
     setCurrentStats({
@@ -115,15 +147,44 @@ const Dashboard = () => {
     
     const notifications = [];
     
+    // Check water level
     if (latest.water_distance > 15) {
       notifications.push({
         message: `Jarak air ${latest.water_distance}cm, direkomendasikan untuk menambah air`,
         action: 'Tambah Air',
         type: 'warning',
-        onAction: () => alert('Aksi: Menambah air...')
+        onAction: () => {
+          fetch(`${ACTIONS_API_URL}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'pump',
+              action: 'increase_water',
+              value: latest.water_distance - 15 // Berapa cm yang perlu ditambah
+            })
+          });
+        }
+      });
+    } else if (latest.water_distance < 5) {
+      notifications.push({
+        message: `Jarak air terlalu rendah (${latest.water_distance}cm), kurangi air`,
+        action: 'Kurangi Air',
+        type: 'warning',
+        onAction: () => {
+          fetch(`${ACTIONS_API_URL}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'pump',
+              action: 'decrease_water',
+              value: 5 - latest.water_distance
+            })
+          });
+        }
       });
     }
     
+    // Check pH level
     if (latest.ph && latest.ph < 6.5) {
       notifications.push({
         message: `pH rendah (${latest.ph}), tambahkan penstabil pH`,
@@ -133,6 +194,7 @@ const Dashboard = () => {
       });
     }
     
+    // Check temperature
     if (latest.temperature > 30) {
       notifications.push({
         message: `Suhu udara tinggi (${latest.temperature}°C), aktifkan sistem pendingin`,
@@ -140,6 +202,29 @@ const Dashboard = () => {
         type: 'warning',
         onAction: () => alert('Aksi: Mengaktifkan pendingin...')
       });
+    }
+
+    // Check feeding time
+    if (lastFeedingTime) {
+      const hoursSinceLastFeeding = (new Date() - new Date(lastFeedingTime)) / (1000 * 60 * 60);
+      if (hoursSinceLastFeeding >= 8) {
+        notifications.push({
+          message: 'Sudah 8 jam sejak pemberian pakan terakhir',
+          action: 'Beri Pakan',
+          type: 'warning',
+          onAction: () => {
+            fetch(`${ACTIONS_API_URL}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'servo',
+                action: 'push_food',
+                value: 1
+              })
+            });
+          }
+        });
+      }
     }
 
     setNotification(notifications.length > 0 ? notifications[0] : null);
@@ -164,6 +249,14 @@ const Dashboard = () => {
 
   const handleSortChange = (newSort) => {
     fetchTableData(1, tableData.limit, newSort);
+  };
+
+  const handleActionsSortChange = (newSort) => {
+    fetchActionsData(1, actionsData.limit, newSort);
+  };
+
+  const handleActionsPageChange = (newPage) => {
+    fetchActionsData(newPage, actionsData.limit, actionsData.sort);
   };
 
   return (
@@ -450,6 +543,161 @@ const Dashboard = () => {
                   disabled={tableData.page === tableData.totalPages}
                   className={`px-3 py-2 rounded-lg text-sm ${
                     tableData.page === tableData.totalPages
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  »
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>        {/* Actions History Table */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-800">Riwayat Aksi</h2>
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-600">
+                Halaman {actionsData.page} dari {actionsData.totalPages}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleActionsSortChange(actionsData.sort === 'asc' ? 'desc' : 'asc')}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-2"
+                >
+                  <span>Sort</span>
+                  <svg className={`w-4 h-4 transition-transform ${actionsData.sort === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipe</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {actionsData.data.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {new Date(item.created_at).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm capitalize">
+                      {item.type === 'pump' ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          Pompa Air
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Pemberi Pakan
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm capitalize">
+                      {item.type === 'pump' ? (
+                        item.action === 'increase_water' ? 'Tambah Air' : 'Kurangi Air'
+                      ) : (
+                        'Beri Pakan'
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {item.type === 'pump' ? (
+                        `${item.value} cm`
+                      ) : (
+                        item.value === 1 ? 'Terbuka' : 'Tertutup'
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {item.type === 'pump' ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Selesai
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          item.value === 1 
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {item.value === 1 ? 'Aktif' : 'Tidak Aktif'}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}              </tbody>
+            </table>
+          </div>
+
+          {/* Actions Pagination */}
+          <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center text-sm text-gray-500">
+              Menampilkan {actionsData.data.length} dari {actionsData.total} aksi
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Ke halaman:</span>
+                <input
+                  type="number"
+                  min="1"
+                  max={actionsData.totalPages}
+                  value={actionsData.page}
+                  onChange={(e) => {
+                    const page = parseInt(e.target.value);
+                    if (page >= 1 && page <= actionsData.totalPages) {
+                      handleActionsPageChange(page);
+                    }
+                  }}
+                  className="w-16 px-2 py-1 text-sm border rounded-md"
+                />
+                <span className="text-sm text-gray-600">dari {actionsData.totalPages}</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleActionsPageChange(1)}
+                  disabled={actionsData.page === 1}
+                  className={`px-3 py-2 rounded-lg text-sm ${
+                    actionsData.page === 1
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  «
+                </button>
+                <button
+                  onClick={() => handleActionsPageChange(actionsData.page - 1)}
+                  disabled={actionsData.page === 1}
+                  className={`px-4 py-2 rounded-lg text-sm ${
+                    actionsData.page === 1
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => handleActionsPageChange(actionsData.page + 1)}
+                  disabled={actionsData.page === actionsData.totalPages}
+                  className={`px-4 py-2 rounded-lg text-sm ${
+                    actionsData.page === actionsData.totalPages
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  Next
+                </button>
+                <button
+                  onClick={() => handleActionsPageChange(actionsData.totalPages)}
+                  disabled={actionsData.page === actionsData.totalPages}
+                  className={`px-3 py-2 rounded-lg text-sm ${
+                    actionsData.page === actionsData.totalPages
                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                       : 'bg-blue-500 text-white hover:bg-blue-600'
                   }`}
