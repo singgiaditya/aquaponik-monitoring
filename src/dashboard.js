@@ -1,5 +1,5 @@
 // src/Dashboard.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { io } from 'socket.io-client';
 
@@ -40,95 +40,7 @@ const Dashboard = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await fetch(API_URL);
-        const json = await res.json();
-        const formattedData = json.map(item => ({
-          temperature: item.temperature,
-          humidity: item.humidity,
-          water_distance: item.water_distance,
-          water_temperature: item.water_temperature,
-          light_intensity: item.light_intensity,
-          tds: item.tds,
-          ph: item.ph,
-          timestamp: new Date(item.created_at).toLocaleString(),
-        }));
-        setData(formattedData);
-        updateCurrentStats(formattedData[formattedData.length - 1]);
-        checkNotification(formattedData);
-        setLastUpdate(new Date().toLocaleString());
-      } catch (err) {
-        console.error('Gagal fetch data:', err);
-      }
-    };
-    fetchData();
-    const interval = setInterval(fetchData, 300000); // Refresh every 5 minutes
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const socket = io(SOCKET_URL);
-
-    socket.on('iot_data', (newItem) => {
-      const formattedItem = {
-        ...newItem,
-        timestamp: new Date(newItem.created_at).toLocaleString(),
-      };
-      setData(prev => {
-        const newData = [...prev, formattedItem];
-        return newData;
-      });
-      updateCurrentStats(formattedItem);
-      checkNotification([newItem]);
-      setLastUpdate(new Date().toLocaleString());
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
-
-  const fetchTableData = async (page = 1, limit = 10, sort = 'asc') => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${TABLE_API_URL}?page=${page}&limit=${limit}&sort=${sort}`);
-      const json = await response.json();
-      setTableData(json);
-    } catch (err) {
-      console.error('Gagal mengambil data tabel:', err);
-    }
-    setIsLoading(false);
-  };
-
-  useEffect(() => {
-    fetchTableData();
-  }, []);
-
-  const fetchActionsData = async (page = 1, limit = 20, sort = 'desc') => {
-    try {
-      const response = await fetch(`${ACTIONS_API_URL}?page=${page}&limit=${limit}&sort=${sort}`);
-      const json = await response.json();
-      setActionsData(json);
-      
-      // Update last feeding time
-      const lastFeeding = json.data.find(item => item.type === 'servo' && item.action === 'push_food');
-      if (lastFeeding) {
-        setLastFeedingTime(new Date(lastFeeding.created_at));
-      }
-    } catch (err) {
-      console.error('Gagal mengambil data aksi:', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchActionsData();
-    const interval = setInterval(fetchActionsData, 300000); // Refresh every 5 minutes
-    return () => clearInterval(interval);
-  }, []);
-
-  const updateCurrentStats = (current) => {
+  const updateCurrentStats = useCallback((current) => {
     if (!current) return;
     setCurrentStats({
       temperature: current.temperature,
@@ -139,9 +51,9 @@ const Dashboard = () => {
       waterDistance: current.water_distance,
       lightIntensity: current.light_intensity
     });
-  };
+  }, []);
 
-  function checkNotification(items) {
+  const checkNotification = useCallback((items) => {
     const latest = Array.isArray(items) ? items[items.length - 1] : items;
     if (!latest) return;
     
@@ -160,7 +72,7 @@ const Dashboard = () => {
             body: JSON.stringify({
               type: 'pump',
               action: 'increase_water',
-              value: latest.water_distance - 15 // Berapa cm yang perlu ditambah
+              value: latest.water_distance - 15
             })
           });
         }
@@ -228,7 +140,95 @@ const Dashboard = () => {
     }
 
     setNotification(notifications.length > 0 ? notifications[0] : null);
-  }
+  }, [lastFeedingTime]); // Add lastFeedingTime as a dependency
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await fetch(API_URL);
+        const json = await res.json();
+        const formattedData = json.map(item => ({
+          temperature: item.temperature,
+          humidity: item.humidity,
+          water_distance: item.water_distance,
+          water_temperature: item.water_temperature,
+          light_intensity: item.light_intensity,
+          tds: item.tds,
+          ph: item.ph,
+          timestamp: new Date(item.created_at).toLocaleString(),
+        }));
+        setData(formattedData);
+        updateCurrentStats(formattedData[formattedData.length - 1]);
+        checkNotification(formattedData);
+        setLastUpdate(new Date().toLocaleString());
+      } catch (err) {
+        console.error('Gagal fetch data:', err);
+      }
+    };
+    fetchData();
+    const interval = setInterval(fetchData, 300000); // Refresh every 5 minutes
+    return () => clearInterval(interval);
+  }, [updateCurrentStats, checkNotification]);
+
+  useEffect(() => {
+    const socket = io(SOCKET_URL);
+
+    socket.on('iot_data', (newItem) => {
+      const formattedItem = {
+        ...newItem,
+        timestamp: new Date(newItem.created_at).toLocaleString(),
+      };
+      setData(prev => {
+        const newData = [...prev, formattedItem];
+        return newData;
+      });
+      updateCurrentStats(formattedItem);
+      checkNotification([newItem]);
+      setLastUpdate(new Date().toLocaleString());
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [updateCurrentStats, checkNotification]);
+
+  const fetchTableData = async (page = 1, limit = 10, sort = 'asc') => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${TABLE_API_URL}?page=${page}&limit=${limit}&sort=${sort}`);
+      const json = await response.json();
+      setTableData(json);
+    } catch (err) {
+      console.error('Gagal mengambil data tabel:', err);
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    fetchTableData();
+  }, []);
+
+  const fetchActionsData = async (page = 1, limit = 20, sort = 'desc') => {
+    try {
+      const response = await fetch(`${ACTIONS_API_URL}?page=${page}&limit=${limit}&sort=${sort}`);
+      const json = await response.json();
+      setActionsData(json);
+      
+      // Update last feeding time
+      const lastFeeding = json.data.find(item => item.type === 'servo' && item.action === 'push_food');
+      if (lastFeeding) {
+        setLastFeedingTime(new Date(lastFeeding.created_at));
+      }
+    } catch (err) {
+      console.error('Gagal mengambil data aksi:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchActionsData();
+    const interval = setInterval(fetchActionsData, 300000); // Refresh every 5 minutes
+    return () => clearInterval(interval);
+  }, []);
 
   const getStatusColor = (value, type) => {
     switch (type) {
