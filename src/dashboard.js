@@ -601,19 +601,34 @@ const Dashboard = () => {
                           Pemberi Pakan
                         </span>
                       )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm capitalize">
+                    </td>                    <td className="px-6 py-4 whitespace-nowrap">
                       {item.type === 'pump' ? (
-                        item.action === 'increase_water' ? 'Tambah Air' : 'Kurangi Air'
+                        <span className={`inline-flex items-center px-3 py-1 rounded-md text-sm font-medium ${
+                          item.action === 'increase_water' 
+                            ? 'bg-blue-50 text-blue-700 border border-blue-300'
+                            : 'bg-orange-50 text-orange-700 border border-orange-300'
+                        }`}>
+                          {item.action === 'increase_water' ? '➕ Tambah Air' : '➖ Kurangi Air'}
+                        </span>
                       ) : (
-                        'Beri Pakan'
+                        <span className="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-green-50 text-green-700 border border-green-300">
+                          🔄 Beri Pakan
+                        </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       {item.type === 'pump' ? (
-                        `${item.value} cm`
+                        <span className="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-gray-50 text-gray-700 border border-gray-300">
+                          📏 {item.value} cm
+                        </span>
                       ) : (
-                        item.value === 1 ? 'Terbuka' : 'Tertutup'
+                        <span className={`inline-flex items-center px-3 py-1 rounded-md text-sm font-medium ${
+                          item.value === 1 
+                            ? 'bg-green-50 text-green-700 border border-green-300'
+                            : 'bg-yellow-50 text-yellow-700 border border-yellow-300'
+                        }`}>
+                          {item.value === 1 ? '🟢 Terbuka' : '🔴 Tertutup'}
+                        </span>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
