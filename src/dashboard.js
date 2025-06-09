@@ -1,15 +1,53 @@
 // src/Dashboard.js
 import React, { useEffect, useState, useCallback } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
+import { 
+  WiThermometer, 
+  WiHumidity, 
+  WiRaindrop 
+} from "react-icons/wi";
+import { 
+  FaWater, 
+  FaRegLightbulb,
+  FaFlask,
+  FaChartLine
+} from "react-icons/fa";
 
 const API_URL = 'https://aquaponik-backend-production.up.railway.app/data';
 const SOCKET_URL = 'https://aquaponik-backend-production.up.railway.app';
 const TABLE_API_URL = 'https://aquaponik-backend-production.up.railway.app/data/all';
 const ACTIONS_API_URL = 'https://aquaponik-backend-production.up.railway.app/actions';
 
+const SensorCard = ({ title, value, unit, icon: Icon, color, onClick, status }) => (
+  <div 
+    onClick={onClick}
+    className="bg-white rounded-xl shadow-lg p-2.5 xs:p-4 sm:p-6 cursor-pointer transform transition-transform hover:scale-105 w-full"
+  >
+    <div className="flex items-center justify-between mb-2 xs:mb-3 sm:mb-4">
+      <div className="flex items-center">
+        <div className={`p-1.5 xs:p-2 sm:p-3 rounded-lg ${color.bg}`}>
+          <Icon className={`w-3 h-3 xs:w-4 xs:h-4 sm:w-6 sm:h-6 ${color.text}`} />
+        </div>
+        <h3 className="ml-1.5 xs:ml-2 sm:ml-3 text-xs xs:text-sm sm:text-base text-gray-700 font-medium">{title}</h3>
+      </div>
+      <FaChartLine className="w-3 h-3 xs:w-4 xs:h-4 sm:w-5 sm:h-5 text-gray-400" />
+    </div>    <div className="flex items-end justify-between">
+      <div>
+        <span className={`text-lg xs:text-xl sm:text-3xl font-bold ${status.color}`}>
+          {value}
+        </span>
+        <span className="ml-0.5 xs:ml-1 sm:ml-2 text-xs xs:text-sm sm:text-base text-gray-500">{unit}</span>
+      </div>
+      <span className={`px-1.5 xs:px-2 py-0.5 xs:py-1 text-[10px] xs:text-xs sm:text-sm rounded-full font-medium ${status.bg} ${status.color}`}>
+        {status.text}
+      </span>
+    </div>
+  </div>
+);
+
 const Dashboard = () => {
-  const [data, setData] = useState([]);
+
   const [notification, setNotification] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [actionsData, setActionsData] = useState({
@@ -137,30 +175,20 @@ const Dashboard = () => {
           }
         });
       }
-    }
-
-    setNotification(notifications.length > 0 ? notifications[0] : null);
+    }    setNotification(notifications.length > 0 ? notifications[0] : null);
   }, [lastFeedingTime]); // Add lastFeedingTime as a dependency
-
+  
   useEffect(() => {
     const fetchData = async () => {
       try {
         const res = await fetch(API_URL);
         const json = await res.json();
-        const formattedData = json.map(item => ({
-          temperature: item.temperature,
-          humidity: item.humidity,
-          water_distance: item.water_distance,
-          water_temperature: item.water_temperature,
-          light_intensity: item.light_intensity,
-          tds: item.tds,
-          ph: item.ph,
-          timestamp: new Date(item.created_at).toLocaleString(),
-        }));
-        setData(formattedData);
-        updateCurrentStats(formattedData[formattedData.length - 1]);
-        checkNotification(formattedData);
-        setLastUpdate(new Date().toLocaleString());
+        if (json.length > 0) {
+          const latestData = json[json.length - 1];
+          updateCurrentStats(latestData);
+          checkNotification(latestData);
+          setLastUpdate(new Date().toLocaleString());
+        }
       } catch (err) {
         console.error('Gagal fetch data:', err);
       }
@@ -173,15 +201,10 @@ const Dashboard = () => {
   useEffect(() => {
     const socket = io(SOCKET_URL);
 
-    socket.on('iot_data', (newItem) => {
-      const formattedItem = {
+    socket.on('iot_data', (newItem) => {      const formattedItem = {
         ...newItem,
         timestamp: new Date(newItem.created_at).toLocaleString(),
       };
-      setData(prev => {
-        const newData = [...prev, formattedItem];
-        return newData;
-      });
       updateCurrentStats(formattedItem);
       checkNotification([newItem]);
       setLastUpdate(new Date().toLocaleString());
@@ -230,104 +253,71 @@ const Dashboard = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const getStatusColor = (value, type) => {
+  const getStatusInfo = (value, type) => {
     switch (type) {
       case 'temperature':
-        return value > 30 ? 'text-red-500' : value < 20 ? 'text-blue-500' : 'text-green-500';
+        return {
+          color: value > 30 ? 'text-red-600' : value < 20 ? 'text-blue-600' : 'text-green-600',
+          bg: value > 30 ? 'bg-red-100' : value < 20 ? 'bg-blue-100' : 'bg-green-100',
+          text: value > 30 ? 'Tinggi' : value < 20 ? 'Rendah' : 'Normal'
+        };
       case 'humidity':
-        return value > 80 ? 'text-red-500' : value < 40 ? 'text-yellow-500' : 'text-green-500';
+        return {
+          color: value > 80 ? 'text-red-600' : value < 40 ? 'text-yellow-600' : 'text-green-600',
+          bg: value > 80 ? 'bg-red-100' : value < 40 ? 'bg-yellow-100' : 'bg-green-100',
+          text: value > 80 ? 'Tinggi' : value < 40 ? 'Rendah' : 'Normal'
+        };
       case 'ph':
-        return value < 6.5 ? 'text-red-500' : value > 8.5 ? 'text-yellow-500' : 'text-green-500';
+        return {
+          color: value < 6.5 ? 'text-red-600' : value > 8.5 ? 'text-yellow-600' : 'text-green-600',
+          bg: value < 6.5 ? 'bg-red-100' : value > 8.5 ? 'bg-yellow-100' : 'bg-green-100',
+          text: value < 6.5 ? 'Asam' : value > 8.5 ? 'Basa' : 'Normal'
+        };
+      case 'water_level':
+        return {
+          color: value > 15 ? 'text-red-600' : 'text-green-600',
+          bg: value > 15 ? 'bg-red-100' : 'bg-green-100',
+          text: value > 15 ? 'Tinggi' : 'Normal'
+        };
       default:
-        return 'text-green-500';
+        return {
+          color: 'text-green-600',
+          bg: 'bg-green-100',
+          text: 'Normal'
+        };
     }
   };
 
-  const handlePageChange = (newPage) => {
-    fetchTableData(newPage, tableData.limit, tableData.sort);
+  const getStatusColor = (value, type) => {
+    const status = getStatusInfo(value, type);
+    return status.color;
   };
 
-  const handleSortChange = (newSort) => {
+  const handleSortChange = useCallback((newSort) => {
     fetchTableData(1, tableData.limit, newSort);
-  };
+  }, [tableData.limit]);
 
-  const handleActionsSortChange = (newSort) => {
+  const handlePageChange = useCallback((newPage) => {
+    fetchTableData(newPage, tableData.limit, tableData.sort);
+  }, [tableData.limit, tableData.sort]);
+
+  const handleActionsSortChange = useCallback((newSort) => {
     fetchActionsData(1, actionsData.limit, newSort);
-  };
+  }, [actionsData.limit]);
 
-  const handleActionsPageChange = (newPage) => {
+  const handleActionsPageChange = useCallback((newPage) => {
     fetchActionsData(newPage, actionsData.limit, actionsData.sort);
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-800">Aquaponik Monitoring Dashboard</h1>
-            <div className="text-sm text-gray-500">
+  }, [actionsData.limit, actionsData.sort]);
+  return (    <div className="min-h-screen bg-gray-100 p-0.5 xs:p-1 sm:p-2 md:p-4">
+      <div className="w-full max-w-7xl mx-auto px-0.5 xs:px-1 sm:px-2">
+        <div className="mb-2 xs:mb-3 sm:mb-4 md:mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 space-y-2 sm:space-y-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Aquaponik Monitoring Dashboard</h1>
+            <div className="text-xs sm:text-sm text-gray-500">
               Update Terakhir: {lastUpdate}
             </div>
           </div>
 
-          {/* Status Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
-              <div className="text-gray-500 text-sm">Suhu Udara</div>
-              <div className={`text-2xl font-bold ${getStatusColor(currentStats.temperature, 'temperature')}`}>
-                {currentStats.temperature}°C
-              </div>
-              <div className="text-xs text-gray-400 mt-1">Normal: 20-30°C</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
-              <div className="text-gray-500 text-sm">Kelembapan</div>
-              <div className={`text-2xl font-bold ${getStatusColor(currentStats.humidity, 'humidity')}`}>
-                {currentStats.humidity}%
-              </div>
-              <div className="text-xs text-gray-400 mt-1">Normal: 40-80%</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
-              <div className="text-gray-500 text-sm">Suhu Air</div>
-              <div className={`text-2xl font-bold ${getStatusColor(currentStats.waterTemp, 'temperature')}`}>
-                {currentStats.waterTemp}°C
-              </div>
-              <div className="text-xs text-gray-400 mt-1">Normal: 20-30°C</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
-              <div className="text-gray-500 text-sm">pH Air</div>
-              <div className={`text-2xl font-bold ${getStatusColor(currentStats.ph, 'ph')}`}>
-                {currentStats.ph}
-              </div>
-              <div className="text-xs text-gray-400 mt-1">Normal: 6.5-8.5</div>
-            </div>
-          </div>
-
-          {/* Additional Status Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-indigo-500">
-              <div className="text-gray-500 text-sm">TDS</div>
-              <div className="text-2xl font-bold text-indigo-600">
-                {currentStats.tds} PPM
-              </div>
-              <div className="text-xs text-gray-400 mt-1">Total Dissolved Solids</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-orange-500">
-              <div className="text-gray-500 text-sm">Ketinggian Air</div>
-              <div className={`text-2xl font-bold ${currentStats.waterDistance > 15 ? 'text-red-500' : 'text-green-500'}`}>
-                {currentStats.waterDistance} cm
-              </div>
-              <div className="text-xs text-gray-400 mt-1">Optimal: {'<'} 15cm</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-amber-500">
-              <div className="text-gray-500 text-sm">Intensitas Cahaya</div>
-              <div className="text-2xl font-bold text-amber-600">
-                {currentStats.lightIntensity} lux
-              </div>
-              <div className="text-xs text-gray-400 mt-1">Intensitas Pencahayaan</div>
-            </div>
-          </div>
-
-          {/* Notifications */}
           {notification && (
             <div className={`mb-6 p-4 rounded-lg ${
               notification.type === 'danger' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
@@ -344,82 +334,91 @@ const Dashboard = () => {
                 </button>
               </div>
             </div>
-          )}
-
-          {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white p-4 rounded-lg shadow-lg">
-              <h3 className="text-lg font-semibold mb-4">Suhu dan Kelembapan</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={data}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" tick={{ angle: -45 }} textAnchor="end" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="temperature" stroke="#8884d8" name="Suhu Udara" />
-                  <Line type="monotone" dataKey="humidity" stroke="#82ca9d" name="Kelembapan" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="bg-white p-4 rounded-lg shadow-lg">
-              <h3 className="text-lg font-semibold mb-4">Kondisi Air</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={data}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" tick={{ angle: -45 }} textAnchor="end" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="water_temperature" stroke="#00bcd4" name="Suhu Air" />
-                  <Line type="monotone" dataKey="water_distance" stroke="#FF5733" name="Jarak Air" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="bg-white p-4 rounded-lg shadow-lg">
-              <h3 className="text-lg font-semibold mb-4">Kualitas Air</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={data}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" tick={{ angle: -45 }} textAnchor="end" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="tds" fill="#4caf50" name="TDS" />
-                  <Bar dataKey="ph" fill="#e91e63" name="pH" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="bg-white p-4 rounded-lg shadow-lg">
-              <h3 className="text-lg font-semibold mb-4">Intensitas Cahaya</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={data}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" tick={{ angle: -45 }} textAnchor="end" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="light_intensity" stroke="#ffc107" name="Intensitas Cahaya" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+          )}          {/* Sensor Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1.5 xs:gap-2 sm:gap-3 md:gap-4 -mx-0.5 xs:-mx-1 sm:mx-0">
+            <Link to="/sensor/temperature" className="block px-0.5 xs:px-1 sm:px-0">
+              <SensorCard
+                title="Suhu Udara"
+                value={currentStats.temperature}
+                unit="°C"
+                icon={WiThermometer}
+                color={{ bg: 'bg-blue-100', text: 'text-blue-600' }}
+                status={getStatusInfo(currentStats.temperature, 'temperature')}
+              />
+            </Link>
+            <Link to="/sensor/humidity" className="block">
+              <SensorCard
+                title="Kelembapan"
+                value={currentStats.humidity}
+                unit="%"
+                icon={WiHumidity}
+                color={{ bg: 'bg-green-100', text: 'text-green-600' }}
+                status={getStatusInfo(currentStats.humidity, 'humidity')}
+              />
+            </Link>
+            <Link to="/sensor/waterTemp" className="block">
+              <SensorCard
+                title="Suhu Air"
+                value={currentStats.waterTemp}
+                unit="°C"
+                icon={WiThermometer}
+                color={{ bg: 'bg-cyan-100', text: 'text-cyan-600' }}
+                status={getStatusInfo(currentStats.waterTemp, 'temperature')}
+              />
+            </Link>
+            <Link to="/sensor/ph" className="block">
+              <SensorCard
+                title="pH Air"
+                value={currentStats.ph}
+                unit=""
+                icon={FaFlask}
+                color={{ bg: 'bg-purple-100', text: 'text-purple-600' }}
+                status={getStatusInfo(currentStats.ph, 'ph')}
+              />
+            </Link>
+            <Link to="/sensor/tds" className="block">
+              <SensorCard
+                title="TDS"
+                value={currentStats.tds}
+                unit="PPM"
+                icon={FaWater}
+                color={{ bg: 'bg-indigo-100', text: 'text-indigo-600' }}
+                status={getStatusInfo(currentStats.tds, 'default')}
+              />
+            </Link>
+            <Link to="/sensor/waterDistance" className="block">
+              <SensorCard
+                title="Ketinggian Air"
+                value={currentStats.waterDistance}
+                unit="cm"
+                icon={WiRaindrop}
+                color={{ bg: 'bg-orange-100', text: 'text-orange-600' }}
+                status={getStatusInfo(currentStats.waterDistance, 'water_level')}
+              />
+            </Link>
+            <Link to="/sensor/lightIntensity" className="block">
+              <SensorCard
+                title="Intensitas Cahaya"
+                value={currentStats.lightIntensity}
+                unit="lux" 
+                icon={FaRegLightbulb}
+                color={{ bg: 'bg-amber-100', text: 'text-amber-600' }}
+                status={getStatusInfo(currentStats.lightIntensity, 'default')}
+              />
+            </Link>
           </div>
-        </div>
-
-        {/* Data Table Section */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mt-6">          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-800">Riwayat Data</h2>
-            <div className="flex items-center gap-4">
-              <div className="text-sm text-gray-600">
+        </div>        {/* Data Table Section */}
+        <div className="bg-white rounded-lg shadow-lg p-1.5 xs:p-2 sm:p-3 md:p-6 mt-2 xs:mt-3 sm:mt-4 md:mt-6 -mx-0.5 xs:-mx-1 sm:mx-0">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 xs:mb-3 space-y-1.5 xs:space-y-2 sm:space-y-0">
+            <h2 className="text-base xs:text-lg sm:text-xl font-bold text-gray-800">Riwayat Data</h2>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
+              <div className="text-sm text-gray-600 whitespace-nowrap">
                 Halaman {tableData.page} dari {tableData.totalPages}
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleSortChange(tableData.sort === 'asc' ? 'desc' : 'asc')}
-                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-2"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-2"
                 >
                   <span>Sort</span>
                   <svg className={`w-4 h-4 transition-transform ${tableData.sort === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -430,65 +429,70 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="-mx-3 sm:mx-0 overflow-x-auto">
+            <div className="inline-block min-w-full align-middle">
+              <div className="overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">              <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Waktu</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Suhu Udara</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelembapan</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Suhu Air</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">pH</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">TDS</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jarak Air</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cahaya</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan="8" className="px-6 py-4 text-center">Loading...</td>
-                  </tr>
-                ) : (
-                  tableData.data.map((item) => (
-                    <tr key={item.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(item.created_at).toLocaleString()}
-                      </td>
-                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${getStatusColor(item.temperature, 'temperature')}`}>
-                        {item.temperature}°C
-                      </td>
-                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${getStatusColor(item.humidity, 'humidity')}`}>
-                        {item.humidity}%
-                      </td>
-                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${getStatusColor(item.water_temperature, 'temperature')}`}>
-                        {item.water_temperature}°C
-                      </td>
-                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${getStatusColor(item.ph, 'ph')}`}>
-                        {item.ph}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {item.tds} PPM
-                      </td>
-                      <td className={`px-6 py-4 whitespace-nowrap text-sm ${item.water_distance > 15 ? 'text-red-500' : 'text-green-500'}`}>
-                        {item.water_distance} cm
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {item.light_intensity} lux
-                      </td>
+                  <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Waktu</th>
+                  <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Suhu Udara</th>
+                  <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Kelembapan</th>
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Suhu Air</th>
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">pH</th>
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">TDS</th>
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Jarak Air</th>
+                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Cahaya</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>          {/* Pagination */}
-          <div className="flex items-center justify-between mt-4">
-            <div className="flex items-center text-sm text-gray-500">
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {isLoading ? (
+                      <tr>
+                        <td colSpan="8" className="px-3 sm:px-6 py-4 text-center text-sm">Loading...</td>
+                      </tr>
+                    ) : (
+                      tableData.data.map((item) => (
+                        <tr key={item.id}>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
+                            {new Date(item.created_at).toLocaleString()}
+                          </td>
+                          <td className={`px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm ${getStatusColor(item.temperature, 'temperature')}`}>
+                            {item.temperature}°C
+                          </td>
+                          <td className={`px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm ${getStatusColor(item.humidity, 'humidity')}`}>
+                            {item.humidity}%
+                          </td>
+                          <td className={`px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm ${getStatusColor(item.water_temperature, 'temperature')}`}>
+                            {item.water_temperature}°C
+                          </td>
+                          <td className={`px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm ${getStatusColor(item.ph, 'ph')}`}>
+                            {item.ph}
+                          </td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
+                            {item.tds} PPM
+                          </td>
+                          <td className={`px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm ${item.water_distance > 15 ? 'text-red-500' : 'text-green-500'}`}>
+                            {item.water_distance} cm
+                          </td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
+                            {item.light_intensity} lux
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Pagination */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-4 space-y-3 sm:space-y-0">
+            <div className="flex items-center text-xs sm:text-sm text-gray-500 whitespace-nowrap">
               Menampilkan {tableData.data.length} dari {tableData.total} data
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Ke halaman:</span>
+                <span className="text-xs sm:text-sm text-gray-600">Halaman:</span>
                 <input
                   type="number"
                   min="1"
@@ -500,15 +504,15 @@ const Dashboard = () => {
                       handlePageChange(page);
                     }
                   }}
-                  className="w-16 px-2 py-1 text-sm border rounded-md"
+                  className="w-16 px-2 py-1 text-xs sm:text-sm border rounded-md"
                 />
-                <span className="text-sm text-gray-600">dari {tableData.totalPages}</span>
+                <span className="text-xs sm:text-sm text-gray-600">dari {tableData.totalPages}</span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-1 sm:gap-2">
                 <button
                   onClick={() => handlePageChange(1)}
                   disabled={tableData.page === 1}
-                  className={`px-3 py-2 rounded-lg text-sm ${
+                  className={`px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm ${
                     tableData.page === 1
                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                       : 'bg-blue-500 text-white hover:bg-blue-600'
@@ -519,18 +523,18 @@ const Dashboard = () => {
                 <button
                   onClick={() => handlePageChange(tableData.page - 1)}
                   disabled={tableData.page === 1}
-                  className={`px-4 py-2 rounded-lg text-sm ${
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm ${
                     tableData.page === 1
                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                       : 'bg-blue-500 text-white hover:bg-blue-600'
                   }`}
                 >
-                  Previous
+                  Prev
                 </button>
                 <button
                   onClick={() => handlePageChange(tableData.page + 1)}
                   disabled={tableData.page === tableData.totalPages}
-                  className={`px-4 py-2 rounded-lg text-sm ${
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm ${
                     tableData.page === tableData.totalPages
                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                       : 'bg-blue-500 text-white hover:bg-blue-600'
@@ -541,7 +545,7 @@ const Dashboard = () => {
                 <button
                   onClick={() => handlePageChange(tableData.totalPages)}
                   disabled={tableData.page === tableData.totalPages}
-                  className={`px-3 py-2 rounded-lg text-sm ${
+                  className={`px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm ${
                     tableData.page === tableData.totalPages
                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                       : 'bg-blue-500 text-white hover:bg-blue-600'
@@ -553,9 +557,9 @@ const Dashboard = () => {
             </div>
           </div>
         </div>        {/* Actions History Table */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-800">Riwayat Aksi</h2>
+        <div className="bg-white rounded-lg shadow-lg p-1.5 xs:p-2 sm:p-3 md:p-6 mt-2 xs:mt-3 sm:mt-4 md:mt-6 -mx-0.5 xs:-mx-1 sm:mx-0">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 xs:mb-3 space-y-1.5 xs:space-y-2 sm:space-y-0">
+            <h2 className="text-base xs:text-lg sm:text-xl font-bold text-gray-800">Riwayat Aksi</h2>
             <div className="flex items-center gap-4">
               <div className="text-sm text-gray-600">
                 Halaman {actionsData.page} dari {actionsData.totalPages}
