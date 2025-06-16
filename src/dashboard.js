@@ -98,7 +98,7 @@ const Dashboard = () => {
     const notifications = [];
     
     // Check water level
-    if (latest.water_distance > 15) {
+    if (latest.water_distance > 23) {
       notifications.push({
         message: `Jarak air ${latest.water_distance}cm, direkomendasikan untuk menambah air`,
         action: 'Tambah Air',
@@ -109,15 +109,16 @@ const Dashboard = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               type: 'pump',
-              action: 'increase_water',
-              value: latest.water_distance - 15
+              action: 'increase_water_open',
+              // value: latest.water_distance - 15
+              value: 20
             })
           });
         }
       });
-    } else if (latest.water_distance < 5) {
+    } else if (latest.water_distance <= 23) {
       notifications.push({
-        message: `Jarak air terlalu rendah (${latest.water_distance}cm), kurangi air`,
+        message: `Jarak air terlalu dekat (${latest.water_distance}cm), kurangi air`,
         action: 'Kurangi Air',
         type: 'warning',
         onAction: () => {
@@ -126,8 +127,9 @@ const Dashboard = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               type: 'pump',
-              action: 'decrease_water',
-              value: 5 - latest.water_distance
+              action: 'decrease_water_open',
+              // value: 5 - latest.water_distance
+              value: 20
             })
           });
         }
